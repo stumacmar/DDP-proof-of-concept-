@@ -3,6 +3,7 @@ import SitePlan from './components/SitePlan';
 import PlotEditor, { Field, Modal } from './components/PlotEditor';
 import ServicesPanel from './components/ServicesPanel';
 import CsvImportModal from './components/CsvImportModal';
+import VectorImportModal, { type VectorImportResult } from './components/VectorImportModal';
 import { emptyProject, makePhase, newId } from './defaults';
 import {
   loadFromLocalStorage, saveToLocalStorage, downloadJson,
@@ -21,6 +22,7 @@ export default function App() {
   const [placeMode, setPlaceMode] = useState(false);
   const [editingPlot, setEditingPlot] = useState<Plot | null>(null);
   const [showCsv, setShowCsv] = useState(false);
+  const [showVectorImport, setShowVectorImport] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -137,6 +139,25 @@ export default function App() {
     if (importSnapshot) { setProject(importSnapshot); setImportSnapshot(null); flash('Import undone.'); }
   };
 
+  // ── vector-PDF import: use the page as plan image + add confirmed plots ──
+  const applyVectorImport = (res: VectorImportResult) => {
+    setImportSnapshot(project);
+    setProject((pr) => {
+      const existing = pr.plots.reduce((m, p) => Math.max(m, parseInt(p.number, 10) || 0), 0);
+      let next = existing;
+      const newPlots: Plot[] = res.plots.map((c) => {
+        const num = c.number.trim() || String(++next);
+        return {
+          id: newId('plot'), number: num, xPct: c.xPct, yPct: c.yPct,
+          stage: 'foundations', completionWeek: null, phaseId: pr.phases[0].id,
+        };
+      });
+      return { ...pr, planImage: res.pageImageDataUrl, plots: [...pr.plots, ...newPlots] };
+    });
+    setShowVectorImport(false);
+    flash(`Added ${res.plots.length} plots from PDF. You can undo this import.`);
+  };
+
   const settings = project.settings;
   const setSettings = (patch: Partial<typeof settings>) =>
     setProject((pr) => ({ ...pr, settings: { ...pr.settings, ...patch } }));
@@ -186,6 +207,7 @@ export default function App() {
             placeMode={placeMode}
             onTogglePlace={() => setPlaceMode((v) => !v)}
             onOpenCsv={() => setShowCsv(true)}
+            onOpenVectorImport={() => setShowVectorImport(true)}
             onUploadPlan={onUploadPlan}
             onUpdateServices={updatePhaseServices}
             onAddPhase={() => setProject((pr) => ({ ...pr, phases: [...pr.phases, makePhase(`Phase ${pr.phases.length + 1}`)] }))}
@@ -234,6 +256,9 @@ export default function App() {
           onApply={applyImport} onClose={() => setShowCsv(false)}
         />
       )}
+      {showVectorImport && (
+        <VectorImportModal onApply={applyVectorImport} onClose={() => setShowVectorImport(false)} />
+      )}
       {showMenu && (
         <ProjectMenu
           project={project}
@@ -266,7 +291,7 @@ function ToggleBtn({ active, onClick, children }: { active: boolean; onClick: ()
 // ── Setup tools section ──────────────────────────────────────────────────
 function SetupTools(props: {
   project: Project; week: number; placeMode: boolean;
-  onTogglePlace: () => void; onOpenCsv: () => void; onUploadPlan: (f: File) => void;
+  onTogglePlace: () => void; onOpenCsv: () => void; onOpenVectorImport: () => void; onUploadPlan: (f: File) => void;
   onUpdateServices: (phaseId: string, s: ServiceRange[]) => void;
   onAddPhase: () => void; onRenamePhase: (id: string, name: string) => void;
   settings: Project['settings']; setSettings: (p: Partial<Project['settings']>) => void;
@@ -284,6 +309,10 @@ function SetupTools(props: {
           <button type="button" onClick={props.onOpenCsv}
             className="min-h-tap rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700">
             Import build programme (CSV)
+          </button>
+          <button type="button" onClick={props.onOpenVectorImport}
+            className="min-h-tap rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700">
+            Import from vector PDF (beta)
           </button>
           {props.canUndo && (
             <button type="button" onClick={props.onUndoImport}
