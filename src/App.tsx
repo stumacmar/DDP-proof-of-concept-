@@ -66,6 +66,20 @@ export default function App() {
     setProject((pr) => ({ ...pr, plots: pr.plots.filter((x) => x.id !== id) }));
     setEditingPlot(null);
   };
+  const movePlot = (id: string, xPct: number, yPct: number) => {
+    setProject((pr) => ({ ...pr, plots: pr.plots.map((x) => (x.id === id ? { ...x, xPct, yPct } : x)) }));
+  };
+  const quickDeletePlot = (id: string) => {
+    const plot = project.plots.find((p) => p.id === id);
+    if (window.confirm(`Delete plot ${plot?.number ?? ''}?`)) {
+      setProject((pr) => ({ ...pr, plots: pr.plots.filter((x) => x.id !== id) }));
+    }
+  };
+  const clearAllPlots = () => {
+    if (project.plots.length && window.confirm(`Delete all ${project.plots.length} plots? This cannot be undone.`)) {
+      setProject((pr) => ({ ...pr, plots: [] }));
+    }
+  };
 
   const updatePhaseServices = (phaseId: string, services: ServiceRange[]) => {
     setProject((pr) => ({
@@ -192,10 +206,13 @@ export default function App() {
             plots={project.plots}
             phases={project.phases}
             week={week}
+            setupMode={setupMode}
             placeMode={placeMode && setupMode}
             drawingRef={drawingRef}
             onPlaceAt={placePlot}
             onTapPlot={setEditingPlot}
+            onMovePlot={movePlot}
+            onDeletePlot={quickDeletePlot}
             onUpload={onUploadPlan}
           />
         </div>
@@ -208,6 +225,7 @@ export default function App() {
             onTogglePlace={() => setPlaceMode((v) => !v)}
             onOpenCsv={() => setShowCsv(true)}
             onOpenVectorImport={() => setShowVectorImport(true)}
+            onClearPlots={clearAllPlots}
             onUploadPlan={onUploadPlan}
             onUpdateServices={updatePhaseServices}
             onAddPhase={() => setProject((pr) => ({ ...pr, phases: [...pr.phases, makePhase(`Phase ${pr.phases.length + 1}`)] }))}
@@ -291,7 +309,7 @@ function ToggleBtn({ active, onClick, children }: { active: boolean; onClick: ()
 // ── Setup tools section ──────────────────────────────────────────────────
 function SetupTools(props: {
   project: Project; week: number; placeMode: boolean;
-  onTogglePlace: () => void; onOpenCsv: () => void; onOpenVectorImport: () => void; onUploadPlan: (f: File) => void;
+  onTogglePlace: () => void; onOpenCsv: () => void; onOpenVectorImport: () => void; onClearPlots: () => void; onUploadPlan: (f: File) => void;
   onUpdateServices: (phaseId: string, s: ServiceRange[]) => void;
   onAddPhase: () => void; onRenamePhase: (id: string, name: string) => void;
   settings: Project['settings']; setSettings: (p: Partial<Project['settings']>) => void;
@@ -325,8 +343,17 @@ function SetupTools(props: {
             <input type="file" accept="image/*" className="sr-only"
               onChange={(e) => e.target.files?.[0] && props.onUploadPlan(e.target.files[0])} />
           </label>
+          {project.plots.length > 0 && (
+            <button type="button" onClick={props.onClearPlots}
+              className="min-h-tap rounded-xl border border-red-300 px-4 py-3 text-sm font-semibold text-red-700">
+              Clear all plots
+            </button>
+          )}
         </div>
-        <p className="mt-2 text-xs text-slate-500">{project.plots.length} plots placed. Tap a marker to edit its stage, completion week and phase.</p>
+        <p className="mt-2 text-xs text-slate-500">
+          {project.plots.length} plots placed. In Setup: <strong>tap</strong> a marker to edit it,
+          <strong> drag</strong> it to reposition, or tap the red <strong>×</strong> to delete.
+        </p>
       </Section>
 
       <Section title="Project settings">
