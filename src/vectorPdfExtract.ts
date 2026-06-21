@@ -13,6 +13,8 @@ export interface VectorExtraction {
   pageWidthPx: number;
   pageHeightPx: number;
   pageCount: number;
+  /** CAD layer (OCG) names found in the document, if any. */
+  layerNames: string[];
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -26,6 +28,18 @@ export async function extractFromPdf(file: File, pageNumber = 1): Promise<Vector
   const data = new Uint8Array(await file.arrayBuffer());
   const doc = await pdfjs.getDocument({ data }).promise;
   try {
+    // CAD layer (Optional Content Group) names — the "key" the drawing carries.
+    let layerNames: string[] = [];
+    try {
+      const occ = await doc.getOptionalContentConfig();
+      const groups = (occ as { getGroups?: () => Record<string, { name?: unknown }> } | null)?.getGroups?.();
+      if (groups) {
+        layerNames = Object.values(groups)
+          .map((g) => (typeof g?.name === 'string' ? g.name : String(g?.name ?? '')))
+          .filter(Boolean);
+      }
+    } catch { /* no layers */ }
+
     const page = await doc.getPage(pageNumber);
 
     // Render at ~1600px wide for a legible plan image.
@@ -91,6 +105,7 @@ export async function extractFromPdf(file: File, pageNumber = 1): Promise<Vector
       pageWidthPx: canvas.width,
       pageHeightPx: canvas.height,
       pageCount: doc.numPages,
+      layerNames,
     };
   } finally {
     await doc.destroy();

@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Modal } from './PlotEditor';
 import { extractFromPdf } from '../vectorPdfExtract';
 import {
-  classifyPdfContent, findPlotCandidates, mapLegendTerms,
-  type ContentClassification, type LegendMatch, type PlotCandidate,
+  classifyPdfContent, findPlotCandidates, mapLegendTerms, matchServiceLayers,
+  type ContentClassification, type LegendMatch, type PlotCandidate, type ServiceLayerMatch,
 } from '../vectorPdf';
 
 export interface VectorImportResult {
@@ -22,6 +22,7 @@ interface Parsed {
   candidates: PlotCandidate[];
   rejected: number;
   legend: LegendMatch[];
+  serviceLayers: ServiceLayerMatch[];
   pageImageDataUrl: string;
   pageCount: number;
 }
@@ -40,8 +41,9 @@ export default function VectorImportModal({ onApply, onClose }: Props) {
       const classification = classifyPdfContent(ex.stats);
       const { candidates, rejected } = findPlotCandidates(ex.tokens);
       const legend = mapLegendTerms(ex.tokens);
+      const serviceLayers = matchServiceLayers(ex.layerNames);
       setParsed({
-        classification, candidates, rejected, legend,
+        classification, candidates, rejected, legend, serviceLayers,
         pageImageDataUrl: ex.pageImageDataUrl, pageCount: ex.pageCount,
       });
       setSelected(new Set(candidates.map((c) => c.number)));
@@ -139,6 +141,27 @@ export default function VectorImportModal({ onApply, onClose }: Props) {
             <p className="mt-1 text-xs text-slate-400">
               Legend matches are informational in this beta (a per-developer profile that remembers
               them is the next step).
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 p-2">
+            <p className="font-semibold text-slate-700">
+              {parsed.serviceLayers.length} service layer{parsed.serviceLayers.length === 1 ? '' : 's'} recognised
+            </p>
+            {parsed.serviceLayers.length === 0 ? (
+              <p className="mt-0.5 text-xs text-slate-500">
+                No CAD service layers found (this PDF may be flattened, or layers use unrecognised names).
+              </p>
+            ) : (
+              <ul className="mt-1 space-y-0.5 text-xs text-slate-600">
+                {parsed.serviceLayers.map((m, i) => (
+                  <li key={i}>layer “{m.layer}” → <strong>{m.label}</strong></li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-1 text-xs text-slate-400">
+              Recognising the key from layers is step one; auto-tracing each service's route off its
+              layer is the next increment — for now, trace services on the plan in Setup.
             </p>
           </div>
 

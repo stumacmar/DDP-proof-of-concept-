@@ -177,6 +177,41 @@ function labelFor(list: readonly { id: string; label: string }[], id: string): s
   return list.find((x) => x.id === id)?.label ?? id;
 }
 
+// ── service LAYER recognition ──────────────────────────────────────────────
+export interface ServiceLayerMatch {
+  /** The CAD layer / OCG name as written in the PDF. */
+  layer: string;
+  serviceId: string;
+  label: string;
+}
+
+/**
+ * Recognise which of a vector PDF's CAD layers (OCG names) correspond to
+ * services — e.g. "C-FOUL" → Foul drainage, "STORM_WATER" → Surface water.
+ * Short codes (sw, fw, lv, bt) must match a whole token to avoid false hits.
+ */
+export function matchServiceLayers(layerNames: string[]): ServiceLayerMatch[] {
+  const out: ServiceLayerMatch[] = [];
+  const seen = new Set<string>();
+  const keys = Object.keys(SERVICE_SYNONYMS);
+
+  for (const name of layerNames) {
+    if (!name || seen.has(name)) continue;
+    const norm = name.toLowerCase().replace(/[-_/]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const tokens = norm.split(' ');
+    let svc: string | undefined;
+    for (const key of keys) {
+      const matched = key.length <= 2 ? tokens.includes(key) : norm.includes(key);
+      if (matched) { svc = SERVICE_SYNONYMS[key]; break; }
+    }
+    if (svc) {
+      out.push({ layer: name, serviceId: svc, label: labelFor(SERVICES, svc) });
+      seen.add(name);
+    }
+  }
+  return out;
+}
+
 /** Normalise a device-space point to a top-left-origin percentage. */
 export function toPct(
   xDev: number, yDev: number, widthDev: number, heightDev: number,

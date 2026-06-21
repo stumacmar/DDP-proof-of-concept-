@@ -4,6 +4,7 @@ import PlotEditor, { Field, Modal } from './components/PlotEditor';
 import ServicesPanel from './components/ServicesPanel';
 import CsvImportModal from './components/CsvImportModal';
 import VectorImportModal, { type VectorImportResult } from './components/VectorImportModal';
+import InterviewModal from './components/InterviewModal';
 import { emptyProject, makePhase, newId, normalizeProject } from './defaults';
 import { SERVICES, serviceColor } from './config';
 import {
@@ -27,6 +28,7 @@ export default function App() {
   const [editingPlot, setEditingPlot] = useState<Plot | null>(null);
   const [showCsv, setShowCsv] = useState(false);
   const [showVectorImport, setShowVectorImport] = useState(false);
+  const [showInterview, setShowInterview] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -91,6 +93,15 @@ export default function App() {
     if (project.routes.length && window.confirm('Delete all service routes?')) {
       setProject((pr) => ({ ...pr, routes: [] }));
     }
+  };
+  const bulkCompletion = (a: number, b: number, week: number | null) => {
+    setProject((pr) => ({
+      ...pr,
+      plots: pr.plots.map((p) => {
+        const n = parseInt(p.number, 10);
+        return Number.isFinite(n) && n >= a && n <= b ? { ...p, completionWeek: week } : p;
+      }),
+    }));
   };
 
   // ── service route tracing ────────────────────────────────────────────────
@@ -286,6 +297,7 @@ export default function App() {
             onClearPlots={clearAllPlots}
             onStartTrace={startTrace}
             onClearRoutes={clearRoutes}
+            onOpenInterview={() => setShowInterview(true)}
             onUploadPlan={onUploadPlan}
             onUpdateServices={updatePhaseServices}
             onAddPhase={() => setProject((pr) => ({ ...pr, phases: [...pr.phases, makePhase(`Phase ${pr.phases.length + 1}`)] }))}
@@ -337,6 +349,15 @@ export default function App() {
       {showVectorImport && (
         <VectorImportModal onApply={applyVectorImport} onClose={() => setShowVectorImport(false)} />
       )}
+      {showInterview && (
+        <InterviewModal
+          project={project}
+          onSetSettings={setSettings}
+          onUpdateServices={updatePhaseServices}
+          onBulkCompletion={bulkCompletion}
+          onClose={() => setShowInterview(false)}
+        />
+      )}
       {showMenu && (
         <ProjectMenu
           project={project}
@@ -370,7 +391,7 @@ function ToggleBtn({ active, onClick, children }: { active: boolean; onClick: ()
 function SetupTools(props: {
   project: Project; week: number; placeMode: boolean;
   onTogglePlace: () => void; onOpenCsv: () => void; onOpenVectorImport: () => void; onClearPlots: () => void;
-  onStartTrace: (serviceId: string) => void; onClearRoutes: () => void; onUploadPlan: (f: File) => void;
+  onStartTrace: (serviceId: string) => void; onClearRoutes: () => void; onOpenInterview: () => void; onUploadPlan: (f: File) => void;
   onUpdateServices: (phaseId: string, s: ServiceRange[]) => void;
   onAddPhase: () => void; onRenamePhase: (id: string, name: string) => void;
   settings: Project['settings']; setSettings: (p: Partial<Project['settings']>) => void;
@@ -379,6 +400,11 @@ function SetupTools(props: {
   const { project, week, placeMode } = props;
   return (
     <div className="space-y-4 p-3">
+      <button type="button" onClick={props.onOpenInterview}
+        className="min-h-tap w-full rounded-xl bg-blue-600 px-4 py-3 text-base font-semibold text-white active:bg-blue-700">
+        Guided setup — answer the timescale questions
+      </button>
+
       <Section title="Plot tools">
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={props.onTogglePlace}

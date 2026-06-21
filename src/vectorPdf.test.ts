@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  classifyPdfContent, findPlotCandidates, mapLegendTerms, toPct,
+  classifyPdfContent, findPlotCandidates, mapLegendTerms, matchServiceLayers, toPct,
   type TextToken,
 } from './vectorPdf';
 
@@ -74,6 +74,28 @@ describe('mapLegendTerms', () => {
 
   it('ignores unrecognised terms', () => {
     expect(mapLegendTerms([tok('North'), tok('Rev P03'), tok('Scale 1:500')])).toEqual([]);
+  });
+});
+
+describe('matchServiceLayers', () => {
+  it('maps CAD layer names to services', () => {
+    const m = matchServiceLayers(['C-FOUL', 'STORM_WATER', 'LV-ELEC', 'C-ROAD-KERB', 'TITLEBLOCK']);
+    const by = Object.fromEntries(m.map((x) => [x.layer, x.serviceId]));
+    expect(by['C-FOUL']).toBe('foul');
+    expect(by['STORM_WATER']).toBe('surface');
+    expect(by['LV-ELEC']).toBe('electric');
+    expect(by['C-ROAD-KERB']).toBe('road');
+    expect(by['TITLEBLOCK']).toBeUndefined();
+  });
+
+  it('matches short codes only as whole tokens (no false positives)', () => {
+    // "sw" as a token → surface; but "swale" must NOT match via substring
+    expect(matchServiceLayers(['330-SW']).map((x) => x.serviceId)).toEqual(['surface']);
+    expect(matchServiceLayers(['SWALE-LINING'])).toEqual([]);
+  });
+
+  it('dedupes repeated layer names', () => {
+    expect(matchServiceLayers(['GAS', 'GAS'])).toHaveLength(1);
   });
 });
 
