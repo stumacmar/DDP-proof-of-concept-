@@ -101,5 +101,15 @@ export function computeBlockers(phase: Phase | undefined, week: number): string[
   return blockers;
 }
 
+/** Whether a service's works are complete ("live") in a phase by `week`. */
+export function serviceLiveInPhase(
+  phase: Phase | undefined,
+  serviceId: string,
+  week: number,
+): boolean {
+  const svc = phase?.services.find((s) => s.serviceId === serviceId);
+  return svc ? week >= svc.endWeek : false;
+}
+
 // Re-export for convenience in tests / UI.
 export { ROAD_STAGES };

@@ -50,6 +50,20 @@ export interface Phase {
   services: ServiceRange[];
 }
 
+/** A point on a traced service route, as a percentage of the plan image. */
+export interface RoutePoint {
+  xPct: number;
+  yPct: number;
+}
+
+/** A spatial route highlighting where a service runs on the plan. */
+export interface ServiceRoute {
+  id: string;
+  serviceId: ServiceId;
+  phaseId: string;
+  points: RoutePoint[];
+}
+
 export interface Settings {
   siteName: string;
   /** ISO date (YYYY-MM-DD) of the Monday that Programme Week 1 commences. */
@@ -64,4 +78,6 @@ export interface Project {
   planImage: string | null;
   plots: Plot[];
   phases: Phase[];
+  /** Spatial service routes drawn over the plan. */
+  routes: ServiceRoute[];
 }

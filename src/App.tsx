@@ -4,7 +4,8 @@ import PlotEditor, { Field, Modal } from './components/PlotEditor';
 import ServicesPanel from './components/ServicesPanel';
 import CsvImportModal from './components/CsvImportModal';
 import VectorImportModal, { type VectorImportResult } from './components/VectorImportModal';
-import { emptyProject, makePhase, newId } from './defaults';
+import { emptyProject, makePhase, newId, normalizeProject } from './defaults';
+import { SERVICES, serviceColor } from './config';
 import {
   loadFromLocalStorage, saveToLocalStorage, downloadJson,
   readProjectFromJsonFile, readProjectFromPdf,
@@ -13,10 +14,13 @@ import { exportPdf } from './pdf';
 import { occupationStatus } from './occupation';
 import { formatWeekCommencing } from './weeks';
 import type { ImportPreview } from './csv';
-import type { BuildStageId, Phase, Plot, Project, ServiceRange } from './types';
+import type { BuildStageId, Phase, Plot, Project, RoutePoint, ServiceRange, ServiceRoute } from './types';
 
 export default function App() {
-  const [project, setProject] = useState<Project>(() => loadFromLocalStorage() ?? emptyProject());
+  const [project, setProject] = useState<Project>(() => {
+    const p = loadFromLocalStorage();
+    return p ? normalizeProject(p) : emptyProject();
+  });
   const [week, setWeek] = useState(1);
   const [setupMode, setSetupMode] = useState(false);
   const [placeMode, setPlaceMode] = useState(false);
@@ -27,6 +31,9 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [importSnapshot, setImportSnapshot] = useState<Project | null>(null);
+  const [tracingServiceId, setTracingServiceId] = useState<string | null>(null);
+  const [tracePhaseId, setTracePhaseId] = useState<string | null>(null);
+  const [activePoints, setActivePoints] = useState<RoutePoint[]>([]);
 
   const drawingRef = useRef<HTMLDivElement>(null);
 
@@ -80,6 +87,40 @@ export default function App() {
       setProject((pr) => ({ ...pr, plots: [] }));
     }
   };
+  const clearRoutes = () => {
+    if (project.routes.length && window.confirm('Delete all service routes?')) {
+      setProject((pr) => ({ ...pr, routes: [] }));
+    }
+  };
+
+  // ── service route tracing ────────────────────────────────────────────────
+  const startTrace = (serviceId: string) => {
+    setPlaceMode(false);
+    setTracePhaseId((id) => id ?? project.phases[0].id);
+    setActivePoints([]);
+    setTracingServiceId(serviceId);
+  };
+  const addTracePoint = (xPct: number, yPct: number) =>
+    setActivePoints((a) => [...a, { xPct, yPct }]);
+  const undoTracePoint = () => setActivePoints((a) => a.slice(0, -1));
+  const finishTrace = () => {
+    if (tracingServiceId && activePoints.length >= 2) {
+      const route: ServiceRoute = {
+        id: newId('route'), serviceId: tracingServiceId as ServiceRange['serviceId'],
+        phaseId: tracePhaseId ?? project.phases[0].id, points: activePoints,
+      };
+      setProject((pr) => ({ ...pr, routes: [...pr.routes, route] }));
+      flash('Service route added.');
+    }
+    setTracingServiceId(null);
+    setActivePoints([]);
+  };
+  const cancelTrace = () => { setTracingServiceId(null); setActivePoints([]); };
+  const deleteRoute = (id: string) => {
+    if (window.confirm('Delete this service route?')) {
+      setProject((pr) => ({ ...pr, routes: pr.routes.filter((r) => r.id !== id) }));
+    }
+  };
 
   const updatePhaseServices = (phaseId: string, services: ServiceRange[]) => {
     setProject((pr) => ({
@@ -97,7 +138,7 @@ export default function App() {
   const openFromPdf = async (file: File) => {
     try {
       const p = await readProjectFromPdf(file);
-      setProject(p);
+      setProject(normalizeProject(p));
       setShowMenu(false);
       flash('Project restored from PDF.');
     } catch (e) {
@@ -106,7 +147,7 @@ export default function App() {
   };
   const openFromJson = async (file: File) => {
     try {
-      setProject(await readProjectFromJsonFile(file));
+      setProject(normalizeProject(await readProjectFromJsonFile(file)));
       setShowMenu(false);
       flash('Project file imported.');
     } catch {
@@ -205,16 +246,33 @@ export default function App() {
             planImage={project.planImage}
             plots={project.plots}
             phases={project.phases}
+            routes={project.routes}
             week={week}
             setupMode={setupMode}
             placeMode={placeMode && setupMode}
+            tracingServiceId={tracingServiceId}
+            activePoints={activePoints}
             drawingRef={drawingRef}
             onPlaceAt={placePlot}
             onTapPlot={setEditingPlot}
             onMovePlot={movePlot}
             onDeletePlot={quickDeletePlot}
+            onTracePoint={addTracePoint}
+            onTapRoute={deleteRoute}
             onUpload={onUploadPlan}
           />
+          {tracingServiceId && (
+            <TraceStrip
+              serviceId={tracingServiceId}
+              phases={project.phases}
+              phaseId={tracePhaseId ?? project.phases[0].id}
+              points={activePoints.length}
+              onPhase={setTracePhaseId}
+              onUndo={undoTracePoint}
+              onFinish={finishTrace}
+              onCancel={cancelTrace}
+            />
+          )}
         </div>
 
         {setupMode && (
@@ -226,6 +284,8 @@ export default function App() {
             onOpenCsv={() => setShowCsv(true)}
             onOpenVectorImport={() => setShowVectorImport(true)}
             onClearPlots={clearAllPlots}
+            onStartTrace={startTrace}
+            onClearRoutes={clearRoutes}
             onUploadPlan={onUploadPlan}
             onUpdateServices={updatePhaseServices}
             onAddPhase={() => setProject((pr) => ({ ...pr, phases: [...pr.phases, makePhase(`Phase ${pr.phases.length + 1}`)] }))}
@@ -309,7 +369,8 @@ function ToggleBtn({ active, onClick, children }: { active: boolean; onClick: ()
 // ── Setup tools section ──────────────────────────────────────────────────
 function SetupTools(props: {
   project: Project; week: number; placeMode: boolean;
-  onTogglePlace: () => void; onOpenCsv: () => void; onOpenVectorImport: () => void; onClearPlots: () => void; onUploadPlan: (f: File) => void;
+  onTogglePlace: () => void; onOpenCsv: () => void; onOpenVectorImport: () => void; onClearPlots: () => void;
+  onStartTrace: (serviceId: string) => void; onClearRoutes: () => void; onUploadPlan: (f: File) => void;
   onUpdateServices: (phaseId: string, s: ServiceRange[]) => void;
   onAddPhase: () => void; onRenamePhase: (id: string, name: string) => void;
   settings: Project['settings']; setSettings: (p: Partial<Project['settings']>) => void;
@@ -356,6 +417,28 @@ function SetupTools(props: {
         </p>
       </Section>
 
+      <Section title="Highlight services on the plan">
+        <p className="mb-2 text-xs text-slate-500">
+          Tap a service, then tap along its route on the plan. Routes show solid in the service
+          colour once live, grey &amp; dashed before then. Tap a route in Setup to delete it.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {SERVICES.map((s) => (
+            <button key={s.id} type="button" onClick={() => props.onStartTrace(s.id)}
+              className="flex min-h-tap items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">
+              <span className="inline-block h-3 w-6 rounded" style={{ backgroundColor: serviceColor(s.id) }} />
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          {project.routes.length} route{project.routes.length === 1 ? '' : 's'} drawn.
+          {project.routes.length > 0 && (
+            <button type="button" onClick={props.onClearRoutes} className="ml-2 font-semibold text-red-700 underline">Clear all routes</button>
+          )}
+        </p>
+      </Section>
+
       <Section title="Project settings">
         <div className="grid grid-cols-1 gap-3">
           <Field label="Site name">
@@ -385,6 +468,35 @@ function SetupTools(props: {
         className="min-h-tap w-full rounded-xl border border-dashed border-slate-400 px-4 py-3 text-sm font-semibold text-slate-600">
         + Add phase
       </button>
+    </div>
+  );
+}
+
+function TraceStrip({ serviceId, phases, phaseId, points, onPhase, onUndo, onFinish, onCancel }: {
+  serviceId: string; phases: Phase[]; phaseId: string; points: number;
+  onPhase: (id: string) => void; onUndo: () => void; onFinish: () => void; onCancel: () => void;
+}) {
+  const label = SERVICES.find((s) => s.id === serviceId)?.label ?? serviceId;
+  return (
+    <div className="sticky top-0 z-30 flex flex-wrap items-center gap-2 border-b border-amber-300 bg-amber-50 px-3 py-2">
+      <span className="text-sm font-bold text-amber-900">
+        Tracing <span className="inline-block h-2 w-5 rounded align-middle" style={{ backgroundColor: serviceColor(serviceId) }} /> {label}
+      </span>
+      <span className="text-xs text-amber-800">{points} point{points === 1 ? '' : 's'} — tap the plan</span>
+      {phases.length > 1 && (
+        <select value={phaseId} onChange={(e) => onPhase(e.target.value)}
+          className="rounded border border-amber-300 bg-white px-2 py-1 text-xs">
+          {phases.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      )}
+      <div className="ml-auto flex gap-2">
+        <button type="button" onClick={onUndo} disabled={points === 0}
+          className="rounded-lg border border-amber-400 px-3 py-1 text-sm font-semibold text-amber-800 disabled:opacity-40">Undo point</button>
+        <button type="button" onClick={onFinish} disabled={points < 2}
+          className="rounded-lg bg-emerald-600 px-3 py-1 text-sm font-semibold text-white disabled:opacity-40">Finish</button>
+        <button type="button" onClick={onCancel}
+          className="rounded-lg border border-slate-300 px-3 py-1 text-sm font-semibold text-slate-600">Cancel</button>
+      </div>
     </div>
   );
 }

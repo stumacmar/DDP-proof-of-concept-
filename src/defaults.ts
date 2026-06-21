@@ -32,7 +32,13 @@ export function emptyProject(): Project {
     planImage: null,
     plots: [],
     phases: [makePhase('Phase 1')],
+    routes: [],
   };
+}
+
+/** Ensure a loaded/imported project has all current fields (forward-compat). */
+export function normalizeProject(p: Project): Project {
+  return { ...p, routes: p.routes ?? [] };
 }
 
 function mostRecentMonday(): string {

@@ -40,20 +40,25 @@ export const ROAD_STAGES: readonly RoadStageDef[] = [
 export interface ServiceDef {
   id: ServiceId;
   label: string;
+  /** Colour used for this service's traced route on the plan when live. */
+  color: string;
   /** Road carries an extra "target stage reached at end week" field. */
   isRoad?: boolean;
 }
 
 export const SERVICES: readonly ServiceDef[] = [
-  { id: 'foul', label: 'Foul drainage' },
-  { id: 'surface', label: 'Surface water' },
-  { id: 'potable', label: 'Potable water' },
-  { id: 'gas', label: 'Gas' },
-  { id: 'electric', label: 'Electric' },
-  { id: 'streetlighting', label: 'Street lighting' },
-  { id: 'comms', label: 'Comms / fibre' },
-  { id: 'road', label: 'Road', isRoad: true },
+  { id: 'foul', label: 'Foul drainage', color: '#8c510a' },
+  { id: 'surface', label: 'Surface water', color: '#1f78b4' },
+  { id: 'potable', label: 'Potable water', color: '#33a02c' },
+  { id: 'gas', label: 'Gas', color: '#e31a1c' },
+  { id: 'electric', label: 'Electric', color: '#ff7f00' },
+  { id: 'streetlighting', label: 'Street lighting', color: '#6a3d9a' },
+  { id: 'comms', label: 'Comms / fibre', color: '#b15928' },
+  { id: 'road', label: 'Road', color: '#444444', isRoad: true },
 ];
+
+export const serviceColor = (id: string): string =>
+  SERVICES.find((s) => s.id === id)?.color ?? '#444444';
 
 /** Status colours (distinct from every build-stage colour above). */
 export const STATUS_COLORS = {
