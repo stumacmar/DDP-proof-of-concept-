@@ -114,11 +114,12 @@ export default function SitePlan({
       <div className="flex h-full w-full flex-col items-center justify-center gap-4 p-6 text-center">
         <p className="text-lg font-semibold text-slate-700">Upload your site plan to begin</p>
         <p className="max-w-xs text-sm text-slate-500">
-          Use a PNG or JPG of your site layout, or import a vector PDF from Setup.
+          Drop in a <strong>PDF exported from CAD</strong> and the app reads it — plot numbers,
+          legend and service layers are proposed for you to confirm. PNG/JPG also works.
         </p>
         <label className="inline-flex min-h-tap cursor-pointer items-center rounded-xl bg-blue-600 px-5 py-3 text-base font-semibold text-white shadow active:bg-blue-700">
-          Upload site plan
-          <input type="file" accept="image/*" className="sr-only"
+          Upload site plan (PDF or image)
+          <input type="file" accept="image/*,.pdf,application/pdf" className="sr-only"
             onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])} />
         </label>
       </div>

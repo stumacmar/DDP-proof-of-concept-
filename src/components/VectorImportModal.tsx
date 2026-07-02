@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal } from './PlotEditor';
 import { extractFromPdf } from '../vectorPdfExtract';
 import {
@@ -13,6 +13,8 @@ export interface VectorImportResult {
 }
 
 interface Props {
+  /** When set, the modal reads this file immediately (unified upload flow). */
+  initialFile?: File | null;
   onApply: (result: VectorImportResult) => void;
   onClose: () => void;
 }
@@ -27,11 +29,20 @@ interface Parsed {
   pageCount: number;
 }
 
-export default function VectorImportModal({ onApply, onClose }: Props) {
+export default function VectorImportModal({ initialFile, onApply, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [parsed, setParsed] = useState<Parsed | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const autoRan = useRef(false);
+
+  useEffect(() => {
+    if (initialFile && !autoRan.current) {
+      autoRan.current = true;
+      void handleFile(initialFile);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFile]);
 
   const handleFile = async (file: File) => {
     setError(null);

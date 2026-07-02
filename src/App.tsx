@@ -28,6 +28,7 @@ export default function App() {
   const [editingPlot, setEditingPlot] = useState<Plot | null>(null);
   const [showCsv, setShowCsv] = useState(false);
   const [showVectorImport, setShowVectorImport] = useState(false);
+  const [pendingPdf, setPendingPdf] = useState<File | null>(null);
   const [showInterview, setShowInterview] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -140,7 +141,15 @@ export default function App() {
   };
 
   // ── file operations ──────────────────────────────────────────────────────
+  // Unified upload: PDFs route into the read-and-propose flow automatically;
+  // images become the plan background directly.
   const onUploadPlan = (file: File) => {
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    if (isPdf) {
+      setPendingPdf(file);
+      setShowVectorImport(true);
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => setProject((pr) => ({ ...pr, planImage: String(reader.result) }));
     reader.readAsDataURL(file);
@@ -221,6 +230,7 @@ export default function App() {
       return { ...pr, planImage: res.pageImageDataUrl, plots: [...pr.plots, ...newPlots] };
     });
     setShowVectorImport(false);
+    setPendingPdf(null);
     flash(`Added ${res.plots.length} plots from PDF. You can undo this import.`);
   };
 
@@ -347,7 +357,11 @@ export default function App() {
         />
       )}
       {showVectorImport && (
-        <VectorImportModal onApply={applyVectorImport} onClose={() => setShowVectorImport(false)} />
+        <VectorImportModal
+          initialFile={pendingPdf}
+          onApply={applyVectorImport}
+          onClose={() => { setShowVectorImport(false); setPendingPdf(null); }}
+        />
       )}
       {showInterview && (
         <InterviewModal
@@ -426,8 +440,8 @@ function SetupTools(props: {
             </button>
           )}
           <label className="inline-flex min-h-tap cursor-pointer items-center rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700">
-            Replace plan image
-            <input type="file" accept="image/*" className="sr-only"
+            Replace plan (PDF or image)
+            <input type="file" accept="image/*,.pdf,application/pdf" className="sr-only"
               onChange={(e) => e.target.files?.[0] && props.onUploadPlan(e.target.files[0])} />
           </label>
           {project.plots.length > 0 && (
