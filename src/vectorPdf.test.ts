@@ -54,6 +54,23 @@ describe('findPlotCandidates', () => {
     const { candidates } = findPlotCandidates([tok('300')], { maxPlot: 200 });
     expect(candidates).toHaveLength(0);
   });
+
+  it('prefers explicit "Plot N" labels and drops bare scale-bar numbers (real-drawing behaviour)', () => {
+    // Modelled on a real CAD export: "Plot 1"/"Plot 2" labels + 5/10/15 scale bar.
+    const { candidates, rejected } = findPlotCandidates([
+      tok('Plot 1', 30, 40), tok('Plot 2', 60, 40),
+      tok('5'), tok('10'), tok('15'), tok('0m'), tok('20m'),
+    ]);
+    expect(candidates.map((c) => c.number).sort()).toEqual(['1', '2']);
+    expect(candidates.find((c) => c.number === '1')).toMatchObject({ xPct: 30, yPct: 40 });
+    // 0m fails the range check; 5/10/15/20m form the discarded bare set.
+    expect(rejected).toBe(5);
+  });
+
+  it('parses PLOT-word variants case-insensitively with suffixes', () => {
+    const { candidates } = findPlotCandidates([tok('PLOT 3a'), tok('Plot-7'), tok('plot 12')]);
+    expect(candidates.map((c) => c.number).sort()).toEqual(['12', '3a', '7']);
+  });
 });
 
 describe('mapLegendTerms', () => {

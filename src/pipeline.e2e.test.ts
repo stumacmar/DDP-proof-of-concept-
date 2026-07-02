@@ -1,10 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { PDFDocument, PDFName, PDFString, StandardFonts, rgb } from 'pdf-lib';
-import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import {
   classifyPdfContent, findPlotCandidates, mapLegendTerms, matchServiceLayers,
-  type PageContentStats, type TextToken,
 } from './vectorPdf';
+import { extractTokensNode as extractTokens } from './testExtract';
 
 /**
  * End-to-end launch check: GENERATE dummy vector site layouts (as a CAD
@@ -57,15 +56,23 @@ async function makeDummyLayout(seed: number): Promise<{ bytes: Uint8Array; truth
   const font = await doc.embedFont(StandardFonts.Helvetica);
 
   // Plots: unique 1–3 digit numbers scattered over the developable area.
+  // Half the layouts use bare numbers, half explicit "Plot N" labels — the
+  // two styles real drawings use (observed on a live planning-portal export).
+  const wordStyle = r() < 0.5;
   const count = int(r, 8, 40);
   const numbers = new Set<string>();
   while (numbers.size < count) numbers.add(String(int(r, 1, 399)));
   const plots = [...numbers].map((number) => {
     const x = 80 + r() * (PAGE_W - 260); // keep clear of the legend column
     const y = 80 + r() * (PAGE_H - 160);
-    page.drawText(number, { x, y, size: 12, font });
+    page.drawText(wordStyle ? `Plot ${number}` : number, { x, y, size: 12, font });
     return { number, xPct: (x / PAGE_W) * 100, yPct: ((PAGE_H - y) / PAGE_H) * 100 };
   });
+  if (wordStyle) {
+    // Scale bar — bare numbers that must NOT become phantom plots.
+    ['0m', '5', '10', '15', '20m'].forEach((s, i) =>
+      page.drawText(s, { x: 60 + i * 24, y: 30, size: 8, font }));
+  }
 
   // Legend block (right-hand column) + drawing noise text.
   const legendPicks = LEGEND_POOL.filter(() => r() < 0.8);
@@ -103,59 +110,6 @@ async function makeDummyLayout(seed: number): Promise<{ bytes: Uint8Array; truth
       layerServices: [...new Set(layerPicks.map((l) => l.service))],
     },
   };
-}
-
-/** Node-side mirror of vectorPdfExtract (no canvas render, same token maths). */
-async function extractTokens(bytes: Uint8Array) {
-  const doc = await pdfjs.getDocument({ data: bytes, isEvalSupported: false }).promise;
-  try {
-    let layerNames: string[] = [];
-    try {
-      const occ = await doc.getOptionalContentConfig();
-      const groups = (occ as unknown as { getGroups?: () => Record<string, { name?: unknown }> })?.getGroups?.();
-      if (groups) {
-        layerNames = Object.values(groups)
-          .map((g) => (typeof g?.name === 'string' ? g.name : String(g?.name ?? '')))
-          .filter(Boolean);
-      }
-    } catch { /* none */ }
-
-    const page = await doc.getPage(1);
-    const base = page.getViewport({ scale: 1 });
-    const viewport = page.getViewport({ scale: 1600 / base.width });
-
-    const tc = await page.getTextContent();
-    const tokens: TextToken[] = [];
-    for (const item of tc.items as Array<{ str?: string; transform?: number[] }>) {
-      if (!item.str || !item.str.trim() || !item.transform) continue;
-      const m = pdfjs.Util.transform(viewport.transform, item.transform);
-      const heightDev = Math.hypot(m[2], m[3]) || 0;
-      tokens.push({
-        text: item.str,
-        xPct: Math.min(1, Math.max(0, m[4] / viewport.width)) * 100,
-        yPct: Math.min(1, Math.max(0, (m[5] - heightDev / 2) / viewport.height)) * 100,
-        height: heightDev,
-      });
-    }
-
-    const opList = await page.getOperatorList();
-    const OPS = pdfjs.OPS;
-    let pathOpCount = 0;
-    let imageOpCount = 0;
-    for (const fn of opList.fnArray) {
-      if ([OPS.moveTo, OPS.lineTo, OPS.curveTo, OPS.rectangle, OPS.stroke, OPS.fill, OPS.eoFill, OPS.constructPath].includes(fn)) pathOpCount++;
-      if ([OPS.paintImageXObject, OPS.paintInlineImageXObject, OPS.paintImageMaskXObject].includes(fn)) imageOpCount++;
-    }
-    const stats: PageContentStats = {
-      textItemCount: tokens.length,
-      pathOpCount,
-      imageOpCount,
-      imageCoverage: imageOpCount > 0 ? (tokens.length < 5 ? 0.9 : 0.4) : 0,
-    };
-    return { tokens, stats, layerNames };
-  } finally {
-    await doc.destroy();
-  }
 }
 
 describe('generated-layout → read pipeline (e2e)', () => {

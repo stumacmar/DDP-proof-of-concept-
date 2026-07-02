@@ -80,32 +80,54 @@ export interface PlotCandidateResult {
   rejected: number;
 }
 
+/** "Plot 12" / "PLOT 3a" / "Plot-7" style labels, as real layouts write them. */
+const PLOT_WORD = /^plot\s*[-–]?\s*(\d{1,3}[A-Za-z]?)$/i;
+
 /**
- * Find plausible plot-number labels among text tokens. Deliberately strict
- * (1–3 digits, optional single-letter suffix, within a sane range) — but
- * drawings carry many numeric tokens (dimensions, levels, gradients), so these
- * are CANDIDATES the engineer confirms, not auto-placed markers.
+ * Find plausible plot-number labels among text tokens.
+ *
+ * Real layouts label plots one of two ways, and drawings are internally
+ * consistent about it:
+ *  - explicit "Plot N" labels — unambiguous, so when ANY are present we use
+ *    only those (this also filters out scale-bar numbers like 5/10/15);
+ *  - bare numbers — accepted strictly (1–3 digits, optional letter suffix,
+ *    sane range) as CANDIDATES the engineer confirms, never auto-placed.
  */
 export function findPlotCandidates(
   tokens: TextToken[],
   opts?: { maxPlot?: number },
 ): PlotCandidateResult {
   const maxPlot = opts?.maxPlot ?? 400;
-  const seen = new Map<string, PlotCandidate>();
+  const word = new Map<string, PlotCandidate>();
+  const bare = new Map<string, PlotCandidate>();
   let rejected = 0;
 
   for (const t of tokens) {
     const raw = t.text.trim();
+
+    const wordMatch = PLOT_WORD.exec(raw);
+    if (wordMatch) {
+      const num = wordMatch[1];
+      const n = parseInt(num, 10);
+      if (Number.isFinite(n) && n >= 1 && n <= maxPlot && !word.has(num)) {
+        word.set(num, { number: num, xPct: t.xPct, yPct: t.yPct });
+      }
+      continue;
+    }
+
     if (!/^\d{1,3}[A-Za-z]?$/.test(raw)) continue; // no decimals, ≤3 digits
     const n = parseInt(raw, 10);
     if (!Number.isFinite(n) || n < 1 || n > maxPlot) {
       rejected++;
       continue;
     }
-    if (!seen.has(raw)) seen.set(raw, { number: raw, xPct: t.xPct, yPct: t.yPct });
+    if (!bare.has(raw)) bare.set(raw, { number: raw, xPct: t.xPct, yPct: t.yPct });
   }
 
-  return { candidates: [...seen.values()], rejected };
+  // Explicit labels win outright: bare numbers on such drawings are almost
+  // always dimensions, levels or the scale bar.
+  if (word.size > 0) return { candidates: [...word.values()], rejected: rejected + bare.size };
+  return { candidates: [...bare.values()], rejected };
 }
 
 // ── legend → vocabulary mapping ────────────────────────────────────────────
